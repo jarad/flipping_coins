@@ -9,22 +9,17 @@
 library("shiny")
 library("tidyverse")
 
-d = readr::read_csv("../data/flips.csv") %>%
-    dplyr::group_by(coin) %>% 
-    dplyr::summarize(y = sum(result == "heads"),
-                     n = n())
-
 posterior = function(d) { 
+    d = d %>%
+        dplyr::group_by(coin) %>% 
+        dplyr::summarize(y = sum(result == "heads"),
+                         n = n())
+    
     data.frame(probability = seq(0,1, length=101)) %>%
         dplyr::mutate(density = dbeta(probability, 
                                       shape1 = 1+d$y,
                                       shape2 = 1+d$n-d$y))
 } 
-
-p = d %>%
-    dplyr::group_by(coin) %>%
-    do(posterior(.))
-    
 
 # Color scale
 coin_colors = c(gold = "#ffd700",
@@ -42,7 +37,7 @@ ui <- fluidPage(
         sidebarPanel(
             selectInput("coin",
                         "Coin:",
-                        choices = c("Gold","Silver","Bronze")),
+                        choices = c("gold","silver","bronze")),
             selectInput("result",
                          "Result",
                          choices = c("heads","tails")),
@@ -60,13 +55,38 @@ ui <- fluidPage(
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
+    
+    values <- reactiveValues(d = read_csv("../data/flips.csv"))
+    
+    observeEvent(input$record, {
+        new = data.frame(
+            date_time = Sys.time(),
+            coin = input$coin,
+            result = input$result)
+        
+        values$d <- bind_rows(values$d, new)
+        
+        write_csv(new, 
+                  append = TRUE,
+                  file = "../data/flips.csv")
+    })
 
+    p <- reactive(
+        values$d %>%
+            dplyr::group_by(coin) %>%
+            do(posterior(.)) %>%
+            dplyr::mutate(coin = factor(coin, 
+                                        levels = c("gold",
+                                                   "silver",
+                                                   "bronze")))
+    )
+    
     output$distPlot <- renderPlot({
-        ggplot(p, aes(x = probability,
-                      y = density,
-                      color = coin,
-                      linetype = coin,
-                      group = coin)) + 
+        ggplot(p(), aes(x = probability,
+                        y = density,
+                        color = coin,
+                        linetype = coin,
+                        group = coin)) + 
             geom_line(size = 2) + 
             scale_color_manual(values = coin_colors) + 
             labs(x = "Probability of flipping heads",
