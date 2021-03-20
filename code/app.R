@@ -9,12 +9,9 @@
 library("shiny")
 library("tidyverse")
 
+
+
 posterior = function(d) { 
-    d = d %>%
-        dplyr::group_by(coin) %>% 
-        dplyr::summarize(y = sum(result == "heads"),
-                         n = n())
-    
     data.frame(probability = seq(0,1, length=101)) %>%
         dplyr::mutate(density = dbeta(probability, 
                                       shape1 = 1+d$y,
@@ -48,7 +45,8 @@ ui <- fluidPage(
 
         # Show a plot of the generated distribution
         mainPanel(
-           plotOutput("distPlot")
+           plotOutput("distPlot"),
+           tableOutput("table")
         )
     )
 )
@@ -70,9 +68,17 @@ server <- function(input, output) {
                   append = TRUE,
                   file = "../data/flips.csv")
     })
+    
+    # Summarize number of heads and total coin flips
+    d <- reactive(
+        values$d %>%
+        dplyr::group_by(coin) %>% 
+        dplyr::summarize(y = sum(result == "heads"),
+                         n = n())
+    )
 
     p <- reactive(
-        values$d %>%
+        d() %>%
             dplyr::group_by(coin) %>%
             do(posterior(.)) %>%
             dplyr::mutate(coin = factor(coin, 
@@ -94,6 +100,8 @@ server <- function(input, output) {
                  title = "Flipping Bitcoin") +
             theme_bw() 
     })
+    
+    output$table <- renderTable(d())
 }
 
 # Run the application 
